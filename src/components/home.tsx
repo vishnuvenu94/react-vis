@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { makeStyles } from '@material-ui/core/styles';
-import Container from '@material-ui/core/Container';
+
 import Autocomplete from '@material-ui/lab/Autocomplete';
 import TextField from '@material-ui/core/TextField';
 import 'date-fns';
 import DateFnsUtils from '@date-io/date-fns';
+import CircularProgress from '@material-ui/core/CircularProgress';
 
 import {
   MuiPickersUtilsProvider,
-  KeyboardTimePicker,
   KeyboardDatePicker,
 } from '@material-ui/pickers';
 
@@ -50,9 +50,14 @@ function Home() {
   const [showChart, setShowChart] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showNotFound, setShowNotFound] = useState(false);
+  const [showSpinner, setShowSpinner] = useState(false);
 
   const handleDateChange = async (date: Date | null) => {
     if (date) {
+      setShowSpinner(true);
+      setShowChart(false);
+      setShowNotFound(false);
+
       console.dir(date);
       let toDateObject = new Date(date.getTime());
       toDateObject.setHours(toDateObject.getHours() + 24);
@@ -67,12 +72,22 @@ function Home() {
           const result = await axios(
             `https://api.openaq.org/v1/measurements?country=${country.code}&city=${city.name}&date_from=${fromDate}&date_to=${toDate}`
           );
+          setShowSpinner(false);
+          setShowChart(true);
+
+          if (result.data.results.length == 0) {
+            setShowNotFound(true);
+          } else {
+            setShowNotFound(false);
+          }
           const seperatedByParameters = seperateByParameters(
             result.data.results
           );
           setShowChart(true);
           setPollutionData(seperatedByParameters);
         } catch (err) {
+          setShowSpinner(false);
+
           alert('Oops something went wrong, Please refresh and try again!!');
         }
       }
@@ -88,14 +103,20 @@ function Home() {
   };
   useEffect(() => {
     const cachedCountries = localStorage.getItem('countries');
+    setShowSpinner(true);
+    setShowNotFound(false);
+
     if (cachedCountries) {
       const cacheParsed = JSON.parse(cachedCountries);
+      setShowSpinner(false);
 
       setCountries(cacheParsed);
     }
 
     axios('https://api.openaq.org/v1/countries')
       .then(({ data }) => {
+        setShowSpinner(false);
+
         console.log(data.results);
         const countryData = data.results;
         const validCountries = countryData.filter(
@@ -107,20 +128,33 @@ function Home() {
         setCountries(validCountries);
       })
       .catch((err) => {
+        setShowSpinner(false);
+
         alert('Oops something went wrong, Please refresh and try again!!');
       });
   }, []);
 
+  useEffect(() => {}, [showSpinner, showNotFound]);
+
   async function countrySelected(country: any) {
     if (country) {
       setCountry(country);
+      setShowSpinner(true);
+      setShowChart(false);
+      setShowNotFound(false);
+      setSelectedDate(new Date());
+
       try {
         const result = await axios(
           `https://api.openaq.org/v1/cities?country=${country.code}`
         );
+        setShowSpinner(false);
+
         console.log(result);
         setCities(result.data.results);
       } catch (err) {
+        setShowSpinner(false);
+
         alert('Oops something went wrong, Please refresh and try again!!');
       }
     }
@@ -129,17 +163,31 @@ function Home() {
   async function citySelected(city: any) {
     if (city) {
       const today = getDate(new Date());
+      setShowSpinner(true);
+      setShowChart(false);
+      setShowNotFound(false);
+      setSelectedDate(new Date());
 
       setCity(city);
       try {
         const result = await axios(
           `https://api.openaq.org/v1/measurements?country=${country.code}&city=${city.name}&date_from=${today}`
         );
+        setShowSpinner(false);
+        setShowChart(true);
+
+        if (result.data.results.length == 0) {
+          setShowNotFound(true);
+        } else {
+          setShowNotFound(false);
+        }
 
         const seperatedByParameters = seperateByParameters(result.data.results);
         setShowChart(true);
         setPollutionData(seperatedByParameters);
       } catch (err) {
+        setShowSpinner(false);
+
         alert('Oops something went wrong, Please refresh and try again!!');
       }
     }
@@ -160,6 +208,7 @@ function Home() {
 
   return (
     <div className={classes.root}>
+      <p style={{ fontSize: '40px', textAlign: 'center' }}>Pollution Data</p>
       <Grid container spacing={3} justify='center'>
         {countries && countries.length > 0 && (
           <Grid item>
@@ -270,11 +319,14 @@ function Home() {
                   <XAxis title='Time' />
                   <YAxis title={pollutionData[parameter][0].unit} />
                   <LineSeries data={validData} />
-                  {/* <LineSeries data={[]} /> */}
                 </XYPlot>
               </div>
             );
           })}
+        {showNotFound && <p>Didn't get data for this date. Try another</p>}
+        {showSpinner && (
+          <CircularProgress style={{ marginTop: '30px' }}></CircularProgress>
+        )}
       </Grid>
     </div>
   );
